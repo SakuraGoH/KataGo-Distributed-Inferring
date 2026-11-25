@@ -158,6 +158,14 @@ int MainCmds::distserver(const vector<string>& args) {
       cfg
     );
 
+    // Some backends (CUDA/ROCm/OpenCL/TensorRT/ONNX) swap in an activation-scaled
+    // variant of the model inside createComputeContext and bump the postprocessing
+    // scale to compensate (scale8). desc is a reference into loadedModel, so this read
+    // happens after the transform and reports the value the backend will actually use.
+    // The client rescales what it receives by serverScale / its own model scale.
+    const float outputScaleMultiplier = desc.postProcessParams.outputScaleMultiplier;
+    logger.write("Distserver: postprocess output scale " + Global::doubleToString(outputScaleMultiplier));
+
     std::atomic<int> nextGpuIdx(0);
     std::atomic<long long> numConnections(0);
 
@@ -197,6 +205,7 @@ int MainCmds::distserver(const vector<string>& args) {
             nnXLen,
             nnYLen,
             maxBatchSize,
+            outputScaleMultiplier,
             connMaxBatch,
             clientUseNHWC
           );

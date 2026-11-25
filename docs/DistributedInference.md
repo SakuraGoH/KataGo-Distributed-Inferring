@@ -77,6 +77,19 @@ nnMaxBatchSize = 32
 The client needs the model file, but only its header is read (shapes and sha256); the weights
 are sent nowhere and are only used by the servers.
 
+## Numerical equivalence
+
+Some backends (CUDA, ROCm, OpenCL, TensorRT, ONNX) replace the loaded model with an
+activation-scaled variant at context-creation time and compensate by multiplying the
+postprocessing scale (`outputScaleMultiplier`) by 8. The client only parses the model
+header, so it cannot see that transform. Since protocol v2 the server reports its effective
+postprocessing scale in the handshake and the client rescales the received policy/value/
+score tensors by `serverScale / clientScale`, which makes a remote evaluation reproduce a
+local one bit-for-bit for both convnet and transformer models.
+
+Because the wire format carries this scale, **client and server must be built from the same
+KataGo version**; a protocol mismatch is rejected at the handshake.
+
 ## Failure behaviour
 
 | event | effect |

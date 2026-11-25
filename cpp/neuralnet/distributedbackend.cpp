@@ -133,9 +133,17 @@ struct ComputeHandle {
   DistProto::ModelDims dims;
   std::unique_ptr<DistProto::Connection> conn;
   Logger* logger;
+  // Backends may replace the model with an activation-scaled variant and bump
+  // postProcessParams.outputScaleMultiplier (e.g. CUDA/ROCm/OpenCL/TensorRT/ONNX scale8).
+  // The server reports its effective value in the handshake; the client parses only the
+  // model header, so it has to rescale received tensors by serverScale/clientScale to make
+  // its own postprocessing reproduce the server's numbers.
+  float outputScaleRatio;
 
-  ComputeHandle(ComputeContext* ctx, int maxBatchSz, int mVer, const DistProto::ModelDims& d)
-    : context(ctx), maxBatchSize(maxBatchSz), modelVersion(mVer), dims(d), conn(nullptr), logger(ctx->logger) {}
+  ComputeHandle(ComputeContext* ctx, int maxBatchSz, int mVer, const DistProto::ModelDims& d,
+                float scaleRatio)
+    : context(ctx), maxBatchSize(maxBatchSz), modelVersion(mVer), dims(d), conn(nullptr),
+      logger(ctx->logger), outputScaleRatio(scaleRatio) {}
   ComputeHandle(const ComputeHandle&) = delete;
   ComputeHandle& operator=(const ComputeHandle&) = delete;
 };
@@ -177,7 +185,13 @@ ComputeHandle* NeuralNet::createComputeHandle(
   const string& host = context->servers[serverIdx].first;
   int port = context->servers[serverIdx].second;
 
-  unique_ptr<ComputeHandle> handle(new ComputeHandle(context, maxBatchSize, m.modelVersion, dims));
+  // The client's own model header still has the untransformed postprocessing scale (the
+  // client never builds the net). The server reports what its backend actually ended up
+  // with, and every value/policy tensor it sends is in that scale.
+  const float clientOutputScale = m.postProcessParams.outputScaleMultiplier;
+
+  float serverOutputScale = clientOutputScale;
+  unique_ptr<ComputeHandle> handle(new ComputeHandle(context, maxBatchSize, m.modelVersion, dims, 1.0f));
 
   handle->conn = DistProto::connect(host, port, context->timeoutSeconds);
   DistProto::clientHandshake(
@@ -186,15 +200,20 @@ ComputeHandle* NeuralNet::createComputeHandle(
     context->nnXLen,
     context->nnYLen,
     maxBatchSize,
-    inputsUseNHWC
+    inputsUseNHWC,
+    serverOutputScale
   );
+  if(clientOutputScale > 0.0f && serverOutputScale > 0.0f)
+    handle->outputScaleRatio = serverOutputScale / clientOutputScale;
 
   if(logger != NULL) {
     logger->write(
       "Distributed backend thread " + Global::intToString(serverThreadIdx) +
       ": connected to " + host + ":" + Global::intToString(port) +
       " (model " + m.name + " " + m.getShortInfoString() + ", nnXLen " + Global::intToString(context->nnXLen) +
-      ", nnYLen " + Global::intToString(context->nnYLen) + ")"
+      ", nnYLen " + Global::intToString(context->nnYLen) +
+      ", outputScale " + Global::doubleToString(serverOutputScale) +
+      "/" + Global::doubleToString(clientOutputScale) + ")"
     );
   }
 
@@ -339,6 +358,17 @@ void NeuralNet::getOutput(
     vector<float> scoreValueBuf(dims.numScoreValueChannels);
     rowOut.scoreValue = scoreValueBuf.data();
     DistProto::recvEvalRow(*handle->conn, dims, rowOut);
+
+    // Undo the server-side activation scaling so that the client's own postprocessing
+    // (which uses the client model's scale) yields the same numbers as a local eval.
+    if(handle->outputScaleRatio != 1.0f) {
+      for(int i = 0; i < xy + 1; i++)
+        rowOut.policyProbs[i] *= handle->outputScaleRatio;
+      for(int i = 0; i < 3; i++)
+        valueBuf[i] *= handle->outputScaleRatio;
+      for(int i = 0; i < dims.numScoreValueChannels; i++)
+        scoreValueBuf[i] *= handle->outputScaleRatio;
+    }
 
     testAssert(dims.numValueChannels == 3);
     output->whiteWinProb = valueBuf[0];

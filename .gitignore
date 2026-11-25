@@ -103,3 +103,9 @@ cpp/external/katagocoreml/proto/
 /dist_test/out/
 /dist_test/feasibility/out/*
 !/dist_test/feasibility/out/results.json
+
+# --- cloud verification scratch: keys and dumps stay local ---
+/dist_test/feasibility/cloud/out/
+/dist_test/feasibility/cloud/id_ed25519
+/dist_test/feasibility/cloud/id_ed25519.pub
+/dist_test/feasibility/cloud/nodes.local.json

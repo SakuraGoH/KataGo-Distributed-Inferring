@@ -286,7 +286,8 @@ void DistProto::clientHandshake(
   int nnXLen,
   int nnYLen,
   int maxBatchSize,
-  bool inputsUseNHWC
+  bool inputsUseNHWC,
+  float& serverOutputScaleOut
 ) {
   conn.writeBytes(MAGIC, sizeof(MAGIC));
   conn.writeInt32(PROTOCOL_VERSION);
@@ -310,6 +311,9 @@ void DistProto::clientHandshake(
     }
     throw StringError("DistProto: server rejected handshake: " + msg);
   }
+  serverOutputScaleOut = conn.readFloat();
+  if(!(serverOutputScaleOut > 0.0f) || !std::isfinite(serverOutputScaleOut))
+    throw StringError("DistProto: server reported an invalid output scale");
 }
 
 void DistProto::serverHandshake(
@@ -318,6 +322,7 @@ void DistProto::serverHandshake(
   int nnXLen,
   int nnYLen,
   int serverMaxBatchSize,
+  float serverOutputScale,
   int& clientMaxBatchSizeOut,
   bool& clientUseNHWCOut
 ) {
@@ -363,6 +368,7 @@ void DistProto::serverHandshake(
   clientUseNHWCOut = conn.readInt32() != 0;
 
   conn.writeInt32(0); // status ok
+  conn.writeFloat(serverOutputScale);
 }
 
 void DistProto::sendError(Connection& conn, const string& message) {

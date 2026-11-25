@@ -10,7 +10,7 @@
 // "katago distserver" processes, each of which loads the model with a normal local
 // backend (CUDA/TensorRT/OpenCL/Eigen/...) and executes the evals.
 //
-// Protocol v1 ("KGD1"), all integers little-endian, all floats IEEE754 binary32.
+// Protocol v2 ("KGD1"), all integers little-endian, all floats IEEE754 binary32.
 // Tensor sizes are implied by the model (sha256-checked in the handshake), so
 // requests and responses carry only raw tensor data, like PhoenixGo's ForwardReq
 // which only carries the packed input features.
@@ -20,9 +20,18 @@
 // postprocessing at all - symmetry handling, policy optimism blending, and the
 // NHWC/NCHW layout question are all resolved on the server, which owns the model.
 //
+// v2 adds the server's postprocessing scale to the handshake. Some backends
+// (CUDA/ROCm/OpenCL/TensorRT/ONNX) replace the model with an activation-scaled
+// variant at context-creation time and multiply postProcessParams.outputScaleMultiplier
+// by 8 as part of that transform. The client parses the model header only, so it
+// does not know about that transform; with v1 it postprocessed the received logits
+// with the unscaled multiplier and produced wrong probabilities (a convnet's 0.4402
+// became 0.4925). The server now reports its effective multiplier and the client
+// rescales the received tensors before its own postprocessing.
+//
 //   handshake, client -> server:
 //     char[4]   magic = "KGD1"
-//     int32     protocolVersion = 1
+//     int32     protocolVersion = 2
 //     char[64]  model sha256 (lowercase hex, zero padded)
 //     int32     nnXLen
 //     int32     nnYLen
@@ -31,6 +40,7 @@
 //   handshake, server -> client:
 //     int32     status (0 = ok, nonzero = error)
 //     if status != 0: int32 errorMessageLen, char[errorMessageLen] (connection then closes)
+//     if status == 0: float outputScaleMultiplier the server's model desc ended up with
 //
 //   eval request, client -> server:
 //     int32     batchSize (> 0)
@@ -61,7 +71,7 @@
 namespace DistProto {
 
   static const char MAGIC[4] = {'K','G','D','1'};
-  static const int32_t PROTOCOL_VERSION = 1;
+  static const int32_t PROTOCOL_VERSION = 2;
   static const int32_t SHA256_HEX_LEN = 64;
 
   // Shape of the tensors exchanged for a model + board size. Must be identical on
@@ -142,19 +152,25 @@ namespace DistProto {
   std::unique_ptr<Connection> wrapRawSocket(int sock, int timeoutSeconds);
 
   // Handshake as client. Throws StringError if the server rejects.
+  // serverOutputScaleOut receives the server's effective
+  // postProcessParams.outputScaleMultiplier (see the protocol comment above); the
+  // caller must rescale received tensors by serverOutputScale / its own scale.
   void clientHandshake(
     Connection& conn,
     const std::string& modelSha256,
     int nnXLen,
     int nnYLen,
     int maxBatchSize,
-    bool inputsUseNHWC
+    bool inputsUseNHWC,
+    float& serverOutputScaleOut
   );
 
   // Handshake as server. Returns the client's maxBatchSize and inputsUseNHWC.
   // serverMaxBatchSize bounds what this server will accept; a client that declares a
   // larger maxBatchSize could send a batch this server has to refuse mid-stream, so the
   // handshake fails instead, before any eval is served.
+  // serverOutputScale is the server's post-createComputeContext
+  // postProcessParams.outputScaleMultiplier (the backends that apply scale8 bump it to 8).
   // Throws StringError after sending an error response if anything mismatches.
   void serverHandshake(
     Connection& conn,
@@ -162,6 +178,7 @@ namespace DistProto {
     int nnXLen,
     int nnYLen,
     int serverMaxBatchSize,
+    float serverOutputScale,
     int& clientMaxBatchSizeOut,
     bool& clientUseNHWCOut
   );
