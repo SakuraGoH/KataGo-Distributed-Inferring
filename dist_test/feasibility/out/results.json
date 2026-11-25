@@ -1,0 +1,315 @@
+{
+  "started": "2026-11-25 21:45:56",
+  "groups": {
+    "correctness": [
+      {
+        "check": "local reference raw-nn",
+        "ok": true,
+        "detail": "133632 bytes of raw-NN output"
+      },
+      {
+        "check": "raw-NN byte-identical via 1 remote server",
+        "ok": true,
+        "detail": "rc=0, identical=True",
+        "server_batches": 18
+      },
+      {
+        "check": "NCHW client -> NHWC-only server: transpose direction correct",
+        "ok": true,
+        "detail": "rc=0, identical=True"
+      },
+      {
+        "check": "raw-NN byte-identical via 3-server fleet (3 NN threads)",
+        "ok": true,
+        "detail": "rc=0, identical=True, per-server batches=[1, 7, 10]"
+      },
+      {
+        "check": "work is spread over multiple machines",
+        "ok": true,
+        "detail": "batches per server = [1, 7, 10] (a short run may leave one connection idle)"
+      },
+      {
+        "check": "local reference game",
+        "ok": true,
+        "detail": "moves='=  =  = R16 = D3 = C16 = R4 = P3 = Q3 = '"
+      },
+      {
+        "check": "6-move game identical over remote inference (fixed seeds)",
+        "ok": true,
+        "detail": "remote='=  =  = R16 = D3 = C16 = R4 = P3 = Q3 = '"
+      },
+      {
+        "check": "both concurrent engines get byte-identical results",
+        "ok": true,
+        "detail": "rc_a=0 rc_b=0, per-server batches=[25, 11]"
+      },
+      {
+        "check": "both machines served both engines",
+        "ok": true,
+        "detail": "batches per server = [25, 11]"
+      }
+    ],
+    "robustness": [
+      {
+        "check": "server bound to LAN address 172.20.67.52, client over it",
+        "ok": true,
+        "detail": "rc=0",
+        "server_batches": 18
+      },
+      {
+        "check": "bad magic is refused by the handshake",
+        "ok": true,
+        "detail": "error status 1: ''"
+      },
+      {
+        "check": "server keeps serving after a bogus client",
+        "ok": true,
+        "detail": "rc=0"
+      },
+      {
+        "check": "board-size mismatch rejected at handshake",
+        "ok": true,
+        "detail": "rc=3221226505 stderr=['ERROR: NN server thread failed: DistProto: server rejected handshake: board size mismatch: server serves 9x9']"
+      },
+      {
+        "check": "client fails fast with a clear error if a server is down",
+        "ok": true,
+        "detail": "rc=3221226505 after 2.80s: ['ERROR: NN server thread failed: DistProto: could not connect to 127.0.0.1:17940: winsock error 10061 (\ufffd\ufffd\ufffd\ufffd\u013f\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\u073e\ufffd\ufffd\ufffd\ufffd\\u07b7\ufffd\ufffd\ufffd\ufffd\u04e1\ufffd']"
+      },
+      {
+        "check": "server survives client disconnect and serves the next client",
+        "ok": true,
+        "detail": "two sequential clients, server alive=True"
+      },
+      {
+        "check": "client nnMaxBatchSize > server -max-batch fails fast",
+        "ok": true,
+        "detail": "boards\r\nUncaught exception: DistProto: server rejected handshake: client maxBatchSize 8 exceeds this server's -max-batch 4; raise the server's -max-batch to at least the client's nnMaxBatchSize, or lower nnMaxBatchSize\r\n"
+      },
+      {
+        "check": "client-only (-DUSE_BACKEND=DISTRIBUTED) build refuses to run distserver",
+        "ok": true,
+        "detail": "rc=1"
+      },
+      {
+        "check": "server killed mid-search: client errors out instead of hanging",
+        "ok": true,
+        "detail": "rc=3221226505 timed_out=False stderr=['ERROR: NN server thread failed: DistProto: socket recv failed: winsock error 10054 (\u0536\ufffd\ufffd\ufffd\ufffd\ufffd\ufffd\u01ff\ufffd\u0239\u0631\ufffd\ufffd\ufffd\u04bb\ufffd\ufffd\ufffd\ufffd\ufffd\u0435\ufffd\ufffd\ufffd\ufffd\u04e1\ufffd']"
+      },
+      {
+        "check": "second engine served while the first is mid-search",
+        "ok": true,
+        "detail": "short client rc=0 in 2.17s, long client still running=True"
+      }
+    ],
+    "gpu": [
+      {
+        "check": "6 connections round-robin over -gpus 0,1,2",
+        "ok": true,
+        "detail": "connId->gpu=[(0, '0'), (1, '1'), (2, '2'), (3, '0'), (4, '1'), (5, '2')] expected_prefix=['0', '1', '2', '0', '1', '2'] rc=0"
+      },
+      {
+        "check": "all three devices actually served work",
+        "ok": true,
+        "detail": "distinct devices=['0', '1', '2']"
+      },
+      {
+        "check": "all connections pinned to one GPU when -gpus 0",
+        "ok": true,
+        "detail": "assigned=['0', '0', '0', '0']"
+      },
+      {
+        "check": "one process per GPU (gpus=0 / gpus=1) both serve",
+        "ok": true,
+        "detail": "batches s0=8 s1=10"
+      }
+    ],
+    "perf_overhead": [
+      {
+        "batch": 1,
+        "client_ms": 63.8713,
+        "server_compute_ms": 62.5,
+        "transport_ms": 1.371299999999998,
+        "transport_frac": 0.021469736798843893,
+        "server_samples": 4
+      },
+      {
+        "batch": 8,
+        "client_ms": 1167.26735,
+        "server_compute_ms": 1156.4999999999998,
+        "transport_ms": 10.767350000000306,
+        "transport_frac": 0.009224407758856877,
+        "server_samples": 4
+      },
+      {
+        "batch": 32,
+        "client_ms": 4188.8164,
+        "server_compute_ms": 4187.5,
+        "transport_ms": 1.3163999999997031,
+        "transport_frac": 0.00031426538532452824,
+        "server_samples": 4
+      }
+    ],
+    "perf": [
+      {
+        "check": "per-eval transport cost measured against server-side compute",
+        "ok": true,
+        "detail": "B1:1.4ms; B8:10.8ms; B32:1.3ms"
+      },
+      {
+        "check": "splitting the same connections over more machines costs nothing",
+        "ok": true,
+        "detail": "1 conn(s): 89% of one-machine throughput; 2 conn(s): 92% of one-machine throughput; 3 conn(s): 94% of one-machine throughput"
+      },
+      {
+        "check": "aggregate throughput grows with the number of machines",
+        "ok": true,
+        "detail": "1->3 machines: 14.62 -> 25.05 evals/s (x1.71); a CPU stand-in with 4 P-cores and 8 E-cores cannot be expected to show linear growth"
+      }
+    ],
+    "perf_scaling": [
+      {
+        "machines": 1,
+        "conns": 1,
+        "split_evals_per_s": 14.61535781,
+        "split_samples": [
+          8.348139324,
+          14.61535781
+        ],
+        "single_evals_per_s": 16.33840597,
+        "single_samples": [
+          6.341952866,
+          16.33840597
+        ],
+        "local_evals_per_s": 18.45139729,
+        "local_samples": [
+          18.45139729,
+          18.41228242
+        ],
+        "split_vs_single": 0.8945400081768198,
+        "speedup_vs_1machine": 1.0
+      },
+      {
+        "machines": 2,
+        "conns": 2,
+        "split_evals_per_s": 19.97844887,
+        "split_samples": [
+          11.71987714,
+          19.97844887
+        ],
+        "single_evals_per_s": 21.60424188,
+        "single_samples": [
+          10.72264297,
+          21.60424188
+        ],
+        "local_evals_per_s": 36.70237636,
+        "local_samples": [
+          34.16330594,
+          36.70237636
+        ],
+        "split_vs_single": 0.9247465836093481,
+        "speedup_vs_1machine": 1.3669490086880056
+      },
+      {
+        "machines": 3,
+        "conns": 3,
+        "split_evals_per_s": 25.05106568,
+        "split_samples": [
+          24.04187193,
+          25.05106568
+        ],
+        "single_evals_per_s": 26.66697037,
+        "single_samples": [
+          23.6008187,
+          26.66697037
+        ],
+        "local_evals_per_s": 50.65256063,
+        "local_samples": [
+          50.65256063,
+          46.60361812
+        ],
+        "split_vs_single": 0.9394042642422601,
+        "speedup_vs_1machine": 1.7140234269775978
+      }
+    ],
+    "perf_wan": [
+      {
+        "batch": 1,
+        "rtt_ms": 0,
+        "client_ms": 60.6983,
+        "server_compute_ms": 62.5,
+        "transport_ms": -1.8016999999999967,
+        "evals_per_s": 15.925919
+      },
+      {
+        "batch": 1,
+        "rtt_ms": 2,
+        "client_ms": 73.11615,
+        "server_compute_ms": 63.0,
+        "transport_ms": 10.116150000000005,
+        "evals_per_s": 12.8461846
+      },
+      {
+        "batch": 1,
+        "rtt_ms": 10,
+        "client_ms": 241.2048,
+        "server_compute_ms": 210.50000000000003,
+        "transport_ms": 30.704799999999977,
+        "evals_per_s": 3.453889475
+      },
+      {
+        "batch": 1,
+        "rtt_ms": 40,
+        "client_ms": 402.9833,
+        "server_compute_ms": 352.0,
+        "transport_ms": 50.983299999999986,
+        "evals_per_s": 2.548535342
+      },
+      {
+        "batch": 8,
+        "rtt_ms": 0,
+        "client_ms": 1381.02595,
+        "server_compute_ms": 1375.0,
+        "transport_ms": 6.025949999999966,
+        "evals_per_s": 5.707381956
+      },
+      {
+        "batch": 8,
+        "rtt_ms": 2,
+        "client_ms": 1008.11955,
+        "server_compute_ms": 984.4999999999999,
+        "transport_ms": 23.619550000000118,
+        "evals_per_s": 7.193672194
+      },
+      {
+        "batch": 8,
+        "rtt_ms": 10,
+        "client_ms": 1133.6372,
+        "server_compute_ms": 1102.0,
+        "transport_ms": 31.637199999999893,
+        "evals_per_s": 6.308032751
+      },
+      {
+        "batch": 8,
+        "rtt_ms": 40,
+        "client_ms": 743.63955,
+        "server_compute_ms": 679.9999999999999,
+        "transport_ms": 63.6395500000001,
+        "evals_per_s": 10.69754406
+      }
+    ],
+    "perf_bytes": [
+      {
+        "batch": 1,
+        "up_bytes_per_eval": 31877.6,
+        "down_bytes_per_eval": 1489.6
+      },
+      {
+        "batch": 8,
+        "up_bytes_per_eval": 31858.7,
+        "down_bytes_per_eval": 1484.7
+      }
+    ]
+  },
+  "finished": "2026-11-25 21:50:28"
+}
