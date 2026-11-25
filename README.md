@@ -8,6 +8,8 @@
 > * Setup and operations: [docs/DistributedInference.md](docs/DistributedInference.md)
 > * Multi-machine / multi-GPU validation (26 automated checks, measured transport cost, bandwidth
 >   and latency sensitivity): [dist_test/feasibility/REPORT.md](dist_test/feasibility/REPORT.md)
+> * Two-node cloud validation video (from-scratch build → tunnels → equality → benchmarks):
+>   [docs/media/kata-distributed-verify.mp4](docs/media/kata-distributed-verify.mp4)
 >
 > Source is a KataGo v1.18.2 snapshot plus this feature and the fixes found while validating it.
 

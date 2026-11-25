@@ -126,6 +126,36 @@ stream loses ~40% of its throughput; at batch 8 the same RTT costs only a few pe
 
 Keep the engine and the GPU machines on the same LAN if possible.
 
+## Validation status and limitations
+
+**Validated** on two rented single-GPU instances (NVIDIA RTX 4080 SUPER 32 GB, CUDA 13.0,
+cuDNN 9), one `distserver` and one SakuraLink SSH tunnel per machine:
+
+* from-scratch CUDA build on both machines: 2 m 28 s each (`-j48`);
+* client configured with `distServers = 127.0.0.1:<tunnel A>,127.0.0.1:<tunnel B>`;
+  both servers logged real `eval batch` work (48 / 37 batches); the remote evaluation is
+  **bit-identical** to same-machine direct inference (whiteWin 0.440201, whiteLead 0.550);
+* throughput, batch 8: GPU-direct 3127 evals/s, one node over the tunnel 56 evals/s,
+  two nodes 62 (2 connections) / 113 (4 connections) evals/s.
+
+Video (2 min, from clean build to benchmark): [media/kata-distributed-verify.mp4](media/kata-distributed-verify.mp4).
+
+**Known limitations**
+
+* Network-bound: one round trip per batch plus 32.6 KB per eval upstream. On a 24 ms RTT
+  link with ~10 MB/s upload this caps a two-machine fleet at ~100–350 evals/s, while the
+  GPUs themselves can do thousands. Same-host or 10 GbE deployment is required to use the
+  GPUs fully.
+* Protocol v2 is not backward compatible: client and server must be rebuilt together.
+* The server has no config file, so backend options (`cudaShareModelWeights`,
+  `openclTunerFile`, FP16 overrides, …) cannot be set on the server side.
+* Each connection owns its own model copy on the GPU; many connections per GPU can
+  exhaust VRAM.
+* No reconnect or failover: a server dying aborts the engine.
+* No authentication or TLS on the wire; keep the server bound to loopback behind SSH.
+* No validation yet on multi-GPU-per-machine hardware, and no same-LAN pair was available;
+  all cloud measurements were across the public internet.
+
 ## Security
 
 There is no authentication and no encryption. Anyone who can reach a `distserver` port can
